@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: nsl_kdd
+    description: "NSL-KDD nätverksintrångsdata i Snowflake"
+    database: NSL_KDD_DB
+    schema: PUBLIC
+    tables:
+      - name: RAW_NETWORK_LOGS
+        description: "125 973 nätverksanslutningar med attacklabels"

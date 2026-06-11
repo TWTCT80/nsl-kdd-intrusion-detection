@@ -1,0 +1,20 @@
+# Hemligheter — får ALDRIG laddas upp
+*.env
+secrets.txt
+*credentials*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# Stora filer
+*.csv
+*.parquet
+*.pkl
+*.zip
+
+# OS-filer
+.DS_Store
+Thumbs.db
