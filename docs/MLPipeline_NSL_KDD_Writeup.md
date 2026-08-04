@@ -73,10 +73,27 @@ Förbättringarna jämfört med KDD'99:
 
 | Fil | Rader | Storlek | Används |
 |---|---|---|---|
-| `KDDTrain+.txt` | 125 973 | ~18 MB | ✅ Träningsdata |
-| `KDDTest+.txt` | 22 544 | ~3.8 MB | ✅ Testdata |
+| `KDDTrain+.txt` | 125 973 | ~18 MB | ✅ Hela pipelinen |
+| `KDDTest+.txt` | 22 544 | ~3.8 MB | Ej använd — se not nedan |
 | `KDDTrain+_20Percent.txt` | 25 192 | ~3.6 MB | Valfritt |
 | `KDDTest-21.txt` | 11 850 | ~2 MB | Valfritt |
+
+> **Om valet av utvärderingsmetod**
+>
+> Endast `KDDTrain+.txt` laddas upp till Snowflake. Modellerna utvärderas på en
+> 80/20-split av den filen (100 778 träning / 25 195 test), inte mot `KDDTest+.txt`.
+>
+> Det är värt att vara tydlig med, eftersom det förklarar de höga F1-värdena.
+> `KDDTest+` är medvetet dragen från en annan fördelning än träningsdatan och innehåller
+> attacktyper som inte förekommer i träningssetet. Utvärdering mot den mäter alltså
+> generalisering till *okända* attacker, vilket är en svårare uppgift — publicerade
+> Random Forest-resultat på den splitten ligger typiskt kring 77–82 % accuracy, mot
+> 99,5 % här.
+>
+> En in-distribution-split mäter hur väl modellen lärt sig mönstren i den data den
+> tränats på. Det är en giltig utvärdering av modellen som sådan, men den säger mindre
+> om hur den skulle klara helt nya attacktyper i produktion. En vidareutveckling av
+> projektet vore att utvärdera mot `KDDTest+` och jämföra de två måtten.
 
 ### Kolumnstruktur (43 kolumner)
 
@@ -153,7 +170,9 @@ Snowflake fungerar som projektets centrala datalager. Rådata laddas upp en gån
 |---|---|
 | Edition | Enterprise (30-dagars trial) |
 | Cloud | Microsoft Azure |
-| Region | North Europe |
+| Region | Sweden Central (Gävle) |
+| Account identifier | `MOMHVMC-KB20003` |
+| Användare | `TT8010` |
 | Warehouse | COMPUTE_WH (X-Small) |
 | Databas | `NSL_KDD_DB` |
 | Schema | `PUBLIC` |
@@ -284,7 +303,7 @@ nsl_kdd_project/
 | Parameter | Värde |
 |---|---|
 | Projekt | `nsl_kdd_project` |
-| Anslutning | Snowflake (BHTUAZA-AH74419) |
+| Anslutning | Snowflake (`MOMHVMC-KB20003`) |
 | Databas | `NSL_KDD_DB` |
 | Warehouse | `COMPUTE_WH` |
 | Output-schema | `DBT_JDOE` (dbt skapar automatiskt) |
@@ -464,8 +483,8 @@ import pandas as pd
 from getpass import getpass
 
 conn = snowflake.connector.connect(
-    account='BHTUAZA-AH74419',
-    user='GH0U1',
+    account='MOMHVMC-KB20003',
+    user='TT8010',
     password=getpass('Snowflake-lösenord: '),
     database='NSL_KDD_DB',
     schema='DBT_JDOE',
@@ -588,6 +607,34 @@ V2 presterar marginellt bättre (0.002 skillnad i F1-score) men kräver dubbelt 
 
 Detta illustrerar en viktig princip i MLOps: en mer komplex modell är inte alltid bättre. Enkelhet och lägre resurskostnad väger tungt i produktionsbeslut.
 
+### Beslutsregeln i kod
+
+Avvägningen är inte en ren metrikjämförelse — den väger förbättring mot driftkostnad. Därför är den implementerad som en explicit tröskel istället för en rak `>`-jämförelse:
+
+```python
+# En mer komplex modell måste betala för sig. v2 har dubbelt så många
+# träd (200 vs 100) och 50% djupare träd — det kostar både tränings-
+# och inferenstid i produktion. Vi kräver en minsta förbättring.
+MIN_FORBATTRING = 0.01
+
+forbattring = rf_f1_v2 - rf_f1
+
+if forbattring >= MIN_FORBATTRING:
+    rekommendation = "Uppgradera till Version B (v2)"
+else:
+    rekommendation = "Behåll Version A (v1) i produktion"
+```
+
+Utfall:
+
+```
+Skillnad i F1:  +0.0018
+Tröskel:        +0.0100
+Rekommendation: Behåll Version A (v1) i produktion
+```
+
+Tröskelvärdet 0.01 är ett omdöme, inte en universell konstant — rätt nivå beror på hur dyr modellen är att köra och vad varje procentenhet är värd i sammanhanget. Poängen är att kriteriet är uttalat och synligt i koden, istället för att beslutet fattas utanför den. Samma variabel `rekommendation` återanvänds i Slack-rapporten, så utskrift, rapport och slutsats aldrig kan glida isär.
+
 ---
 
 ---
@@ -633,7 +680,7 @@ rapport = f"""
 *A/B-test (70/30 trafikdelning):*
 • Version A (v1) korrekthet: {v1_correct:.3f}
 • Version B (v2) korrekthet: {v2_correct:.3f}
-• Rekommendation: Uppgradera till v2
+• Rekommendation: {rekommendation}
 
 *MLflow Run ID (RF v1):* {rf_run_id}
 *Status:* Klar
