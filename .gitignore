@@ -19,3 +19,12 @@ __pycache__/
 .DS_Store
 Thumbs.db
 !data/fct_features_backup.csv
+
+# Modellfiler krävs vid inlämning — undantag från *.pkl ovan
+# Spåras med Git LFS enligt .gitattributes
+!models/random_forest_model.pkl
+!models/scaler.pkl
+
+# Rådata NSL-KDD (54 MB, återställd från papperskorgen 2026-08-04)
+# Finns att ladda ner igen från University of New Brunswick vid behov
+data/raw/
